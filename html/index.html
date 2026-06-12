@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Timeline — Inkwell</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav>
+    <span class="brand">Inkwell</span>
+    <a href="/">Timeline</a>
+    <a href="/post">Post</a>
+    <a href="/profile">Profile</a>
+    <a href="/users">Users</a>
+    <a href="#" id="logout-link">Logout</a>
+  </nav>
+
+  <div class="container">
+    <div class="page-title">Timeline</div>
+    <div id="msg" class="msg"></div>
+    <div id="feed">
+      <div class="loading">Loading posts…</div>
+    </div>
+  </div>
+
+  <script src="/js/markdown.js"></script>
+  <script>
+    (function initTimeline() {
+      var token = localStorage.getItem('token') || localStorage.getItem('session_token');
+      if (!token) {
+        window.location.href = '/login';
+        return;
+      }
+
+      var logoutLink = document.getElementById('logout-link');
+      logoutLink.addEventListener('click', function handleLogout(e) {
+        e.preventDefault();
+        localStorage.removeItem('token');
+        localStorage.removeItem('session_token');
+        window.location.href = '/login';
+      });
+
+      function showMsg(text, type) {
+        var el = document.getElementById('msg');
+        el.textContent = text;
+        el.className = 'msg show ' + type;
+      }
+
+      function loadTimeline() {
+        fetch('/api/timeline', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        })
+          .then(function handleResponse(res) {
+            if (res.status === 401) {
+              localStorage.removeItem('token');
+              localStorage.removeItem('session_token');
+              window.location.href = '/login';
+              return null;
+            }
+            return res.json();
+          })
+          .then(function renderFeed(data) {
+            if (!data) return;
+            var feed = document.getElementById('feed');
+
+            var posts = Array.isArray(data) ? data : (data.posts || []);
+
+            if (posts.length === 0) {
+              feed.innerHTML = '<div class="card"><p>No posts yet. Follow some users or <a href="/post">create a post</a>!</p></div>';
+              return;
+            }
+
+            feed.innerHTML = posts.map(function buildPost(p) {
+              var author = p.username || p.author || 'unknown';
+              var createdAt = p.created_at ? new Date(p.created_at).toLocaleString() : '';
+              var body = p.body || p.content || '';
+              return '<div class="post-card">' +
+                '<div class="post-meta">' +
+                  '<a href="/users/' + escAttr(author) + '">@' + escText(author) + '</a>' +
+                  (createdAt ? ' &middot; ' + escText(createdAt) : '') +
+                '</div>' +
+                '<div class="post-content">' + renderMarkdown(body) + '</div>' +
+              '</div>';
+            }).join('');
+          })
+          .catch(function handleError(err) {
+            showMsg('Failed to load timeline: ' + err.message, 'error');
+            document.getElementById('feed').innerHTML = '';
+          });
+      }
+
+      function escText(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      }
+      function escAttr(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+      }
+
+      loadTimeline();
+    })();
+  </script>
+</body>
+</html>

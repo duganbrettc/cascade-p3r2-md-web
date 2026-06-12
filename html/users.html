@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browse Users — Inkwell</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav>
+    <span class="brand">Inkwell</span>
+    <a href="/">Timeline</a>
+    <a href="/post">Post</a>
+    <a href="/profile">Profile</a>
+    <a href="/users">Users</a>
+    <a href="#" id="logout-link">Logout</a>
+  </nav>
+
+  <div class="container-wide">
+    <div class="page-title">Browse Users</div>
+    <div id="msg" class="msg"></div>
+    <div id="users-list">
+      <div class="loading">Loading users…</div>
+    </div>
+  </div>
+
+  <script>
+    (function initUsersPage() {
+      var token = localStorage.getItem('token') || localStorage.getItem('session_token');
+      if (!token) {
+        window.location.href = '/login';
+        return;
+      }
+
+      document.getElementById('logout-link').addEventListener('click', function handleLogout(e) {
+        e.preventDefault();
+        localStorage.removeItem('token');
+        localStorage.removeItem('session_token');
+        window.location.href = '/login';
+      });
+
+      function showMsg(text, type) {
+        var el = document.getElementById('msg');
+        el.textContent = text;
+        el.className = 'msg show ' + type;
+      }
+
+      function handleFollowToggle(username, isFollowing, btn) {
+        var method = isFollowing ? 'DELETE' : 'POST';
+        btn.disabled = true;
+        fetch('/api/follow/' + encodeURIComponent(username), {
+          method: method,
+          headers: { 'Authorization': 'Bearer ' + token }
+        })
+          .then(function handleResponse(res) {
+            btn.disabled = false;
+            if (res.ok) {
+              if (isFollowing) {
+                btn.textContent = 'Follow';
+                btn.className = 'btn-success';
+                btn.dataset.following = 'false';
+              } else {
+                btn.textContent = 'Unfollow';
+                btn.className = 'btn-secondary';
+                btn.dataset.following = 'true';
+              }
+            } else {
+              return res.json().then(function showErr(data) {
+                showMsg((data && (data.error || data.message)) || 'Action failed.', 'error');
+              });
+            }
+          })
+          .catch(function handleError(err) {
+            btn.disabled = false;
+            showMsg('Network error: ' + err.message, 'error');
+          });
+      }
+
+      function loadUsers() {
+        fetch('/api/users', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        })
+          .then(function handleResponse(res) {
+            if (res.status === 401) {
+              localStorage.removeItem('token');
+              localStorage.removeItem('session_token');
+              window.location.href = '/login';
+              return null;
+            }
+            return res.json();
+          })
+          .then(function renderUsers(data) {
+            if (!data) return;
+            var users = Array.isArray(data) ? data : (data.users || []);
+            var container = document.getElementById('users-list');
+
+            if (users.length === 0) {
+              container.innerHTML = '<div class="card"><p>No users found.</p></div>';
+              return;
+            }
+
+            var grid = document.createElement('div');
+            grid.className = 'users-grid';
+
+            users.forEach(function buildUserCard(u) {
+              var username = u.username || '';
+              var displayName = u.display_name || username;
+              var bio = u.bio || '';
+              var isFollowing = !!u.is_following;
+
+              var card = document.createElement('div');
+              card.className = 'user-card';
+
+              var nameEl = document.createElement('a');
+              nameEl.href = '/users/' + encodeURIComponent(username);
+              nameEl.className = 'username';
+              nameEl.textContent = '@' + username;
+
+              var dnEl = document.createElement('div');
+              dnEl.className = 'display-name';
+              dnEl.textContent = displayName;
+
+              card.appendChild(nameEl);
+              card.appendChild(dnEl);
+
+              if (bio) {
+                var bioEl = document.createElement('div');
+                bioEl.className = 'bio';
+                bioEl.textContent = bio;
+                card.appendChild(bioEl);
+              }
+
+              if (u.is_following !== undefined || !u.is_self) {
+                var btn = document.createElement('button');
+                btn.textContent = isFollowing ? 'Unfollow' : 'Follow';
+                btn.className = isFollowing ? 'btn-secondary' : 'btn-success';
+                btn.dataset.following = isFollowing ? 'true' : 'false';
+                btn.addEventListener('click', function handleFollowBtn() {
+                  var currently = btn.dataset.following === 'true';
+                  handleFollowToggle(username, currently, btn);
+                });
+                card.appendChild(btn);
+              }
+
+              grid.appendChild(card);
+            });
+
+            container.innerHTML = '';
+            container.appendChild(grid);
+          })
+          .catch(function handleError(err) {
+            showMsg('Failed to load users: ' + err.message, 'error');
+            document.getElementById('users-list').innerHTML = '';
+          });
+      }
+
+      loadUsers();
+    })();
+  </script>
+</body>
+</html>

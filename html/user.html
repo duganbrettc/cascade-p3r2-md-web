@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User Profile — Inkwell</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav>
+    <span class="brand">Inkwell</span>
+    <a href="/">Timeline</a>
+    <a href="/post">Post</a>
+    <a href="/profile">Profile</a>
+    <a href="/users">Users</a>
+    <a href="#" id="logout-link">Logout</a>
+  </nav>
+
+  <div class="container">
+    <div id="msg" class="msg"></div>
+
+    <div class="card" id="user-header" style="margin-bottom:1.5rem;">
+      <div class="loading">Loading…</div>
+    </div>
+
+    <div class="page-title" id="posts-title" style="display:none;">Posts</div>
+    <div id="user-posts">
+    </div>
+  </div>
+
+  <script src="/js/markdown.js"></script>
+  <script>
+    (function initUserProfilePage() {
+      var token = localStorage.getItem('token') || localStorage.getItem('session_token');
+      if (!token) {
+        window.location.href = '/login';
+        return;
+      }
+
+      document.getElementById('logout-link').addEventListener('click', function handleLogout(e) {
+        e.preventDefault();
+        localStorage.removeItem('token');
+        localStorage.removeItem('session_token');
+        window.location.href = '/login';
+      });
+
+      function showMsg(text, type) {
+        var el = document.getElementById('msg');
+        el.textContent = text;
+        el.className = 'msg show ' + type;
+      }
+
+      // Extract username from URL path: /users/{username}
+      var pathParts = window.location.pathname.split('/').filter(Boolean);
+      var username = pathParts[1] || null;
+
+      if (!username) {
+        window.location.href = '/users';
+        return;
+      }
+
+      var currentUsername = null;
+      var isFollowing = false;
+
+      function loadCurrentUser() {
+        return fetch('/api/users/me', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        })
+          .then(function handleResponse(res) {
+            if (res.status === 401) {
+              localStorage.removeItem('token');
+              localStorage.removeItem('session_token');
+              window.location.href = '/login';
+              return null;
+            }
+            return res.json();
+          })
+          .then(function setUser(data) {
+            if (!data) return;
+            var u = data.user || data;
+            currentUsername = u.username || null;
+          });
+      }
+
+      function loadUserProfile() {
+        return fetch('/api/users/' + encodeURIComponent(username), {
+          headers: { 'Authorization': 'Bearer ' + token }
+        })
+          .then(function handleResponse(res) {
+            if (!res.ok) {
+              throw new Error('User not found');
+            }
+            return res.json();
+          })
+          .then(function renderHeader(data) {
+            var user = data.user || data;
+            var dn = user.display_name || username;
+            var bio = user.bio || '';
+            isFollowing = !!user.is_following;
+
+            document.title = '@' + username + ' — Inkwell';
+
+            var header = document.getElementById('user-header');
+            var isSelf = username === currentUsername;
+
+            var html = '<h2>' + escText(dn) + '</h2>' +
+              '<div class="profile-username">@' + escText(username) + '</div>';
+
+            if (bio) {
+              html += '<p style="margin-top:0.75rem;color:#4b5563;">' + escText(bio) + '</p>';
+            }
+
+            if (!isSelf) {
+              var btnClass = isFollowing ? 'btn-secondary' : 'btn-success';
+              var btnLabel = isFollowing ? 'Unfollow' : 'Follow';
+              html += '<div style="margin-top:1rem;">' +
+                '<button id="follow-btn" class="' + btnClass + '">' + btnLabel + '</button>' +
+              '</div>';
+            }
+
+            header.innerHTML = html;
+
+            if (!isSelf) {
+              var followBtn = document.getElementById('follow-btn');
+              followBtn.addEventListener('click', function handleFollowToggle() {
+                var method = isFollowing ? 'DELETE' : 'POST';
+                followBtn.disabled = true;
+                fetch('/api/follow/' + encodeURIComponent(username), {
+                  method: method,
+                  headers: { 'Authorization': 'Bearer ' + token }
+                })
+                  .then(function handleResponse(res) {
+                    followBtn.disabled = false;
+                    if (res.ok) {
+                      isFollowing = !isFollowing;
+                      followBtn.textContent = isFollowing ? 'Unfollow' : 'Follow';
+                      followBtn.className = isFollowing ? 'btn-secondary' : 'btn-success';
+                    } else {
+                      return res.json().then(function showErr(d) {
+                        showMsg((d && (d.error || d.message)) || 'Action failed.', 'error');
+                      });
+                    }
+                  })
+                  .catch(function handleError(err) {
+                    followBtn.disabled = false;
+                    showMsg('Network error: ' + err.message, 'error');
+                  });
+              });
+            }
+          });
+      }
+
+      function loadUserPosts() {
+        return fetch('/api/posts/by/' + encodeURIComponent(username), {
+          headers: { 'Authorization': 'Bearer ' + token }
+        })
+          .then(function handleResponse(res) {
+            if (!res.ok) return [];
+            return res.json();
+          })
+          .then(function renderPosts(data) {
+            var posts = Array.isArray(data) ? data : (data.posts || []);
+            var container = document.getElementById('user-posts');
+
+            if (posts.length === 0) {
+              container.innerHTML = '<div class="card"><p>No posts yet.</p></div>';
+            } else {
+              document.getElementById('posts-title').style.display = '';
+              container.innerHTML = posts.map(function buildPost(p) {
+                var body = p.body || p.content || '';
+                var createdAt = p.created_at ? new Date(p.created_at).toLocaleString() : '';
+                return '<div class="post-card">' +
+                  (createdAt ? '<div class="post-meta">' + escText(createdAt) + '</div>' : '') +
+                  '<div class="post-content">' + renderMarkdown(body) + '</div>' +
+                '</div>';
+              }).join('');
+            }
+          })
+          .catch(function ignoreError() {
+            document.getElementById('user-posts').innerHTML = '<div class="card"><p>Could not load posts.</p></div>';
+          });
+      }
+
+      function escText(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      }
+
+      loadCurrentUser()
+        .then(loadUserProfile)
+        .then(loadUserPosts)
+        .catch(function handleInitError(err) {
+          document.getElementById('user-header').innerHTML = '<p style="color:#991b1b;">' + escText(err.message) + '</p>';
+        });
+    })();
+  </script>
+</body>
+</html>

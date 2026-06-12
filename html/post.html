@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New Post — Inkwell</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav>
+    <span class="brand">Inkwell</span>
+    <a href="/">Timeline</a>
+    <a href="/post">Post</a>
+    <a href="/profile">Profile</a>
+    <a href="/users">Users</a>
+    <a href="#" id="logout-link">Logout</a>
+  </nav>
+
+  <div class="container-wide">
+    <div class="page-title">New Post</div>
+    <div id="msg" class="msg"></div>
+
+    <div class="post-editor">
+      <div class="editor-pane">
+        <label for="post-body">Write (Markdown supported)</label>
+        <textarea id="post-body" placeholder="Write your post here… Markdown is supported."></textarea>
+      </div>
+      <div class="preview-pane">
+        <label>Live Preview</label>
+        <div id="preview"><em style="color:#9ca3af;">Preview will appear here…</em></div>
+      </div>
+    </div>
+
+    <div style="margin-top: 1.25rem;">
+      <button id="publish-btn">Publish Post</button>
+    </div>
+  </div>
+
+  <script src="/js/markdown.js"></script>
+  <script>
+    (function initPostPage() {
+      var token = localStorage.getItem('token') || localStorage.getItem('session_token');
+      if (!token) {
+        window.location.href = '/login';
+        return;
+      }
+
+      document.getElementById('logout-link').addEventListener('click', function handleLogout(e) {
+        e.preventDefault();
+        localStorage.removeItem('token');
+        localStorage.removeItem('session_token');
+        window.location.href = '/login';
+      });
+
+      function showMsg(text, type) {
+        var el = document.getElementById('msg');
+        el.textContent = text;
+        el.className = 'msg show ' + type;
+      }
+
+      var postBody = document.getElementById('post-body');
+      var preview = document.getElementById('preview');
+
+      postBody.addEventListener('input', function updatePreview() {
+        var raw = postBody.value;
+        if (raw.trim() === '') {
+          preview.innerHTML = '<em style="color:#9ca3af;">Preview will appear here…</em>';
+        } else {
+          preview.innerHTML = renderMarkdown(raw);
+        }
+      });
+
+      document.getElementById('publish-btn').addEventListener('click', function handlePublish() {
+        var body = postBody.value.trim();
+        if (!body) {
+          showMsg('Post body cannot be empty.', 'error');
+          return;
+        }
+
+        fetch('/api/posts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+          },
+          body: JSON.stringify({ body: body })
+        })
+          .then(function handleResponse(res) {
+            if (res.status === 401) {
+              localStorage.removeItem('token');
+              localStorage.removeItem('session_token');
+              window.location.href = '/login';
+              return null;
+            }
+            return res.json().then(function parseBody(data) {
+              return { status: res.status, data: data };
+            });
+          })
+          .then(function handleResult(result) {
+            if (!result) return;
+            if (result.status >= 200 && result.status < 300) {
+              showMsg('Post published!', 'success');
+              postBody.value = '';
+              preview.innerHTML = '<em style="color:#9ca3af;">Preview will appear here…</em>';
+              setTimeout(function goHome() { window.location.href = '/'; }, 900);
+            } else {
+              var errMsg = (result.data && (result.data.error || result.data.message)) || 'Failed to publish post.';
+              showMsg(errMsg, 'error');
+            }
+          })
+          .catch(function handleError(err) {
+            showMsg('Network error: ' + err.message, 'error');
+          });
+      });
+    })();
+  </script>
+</body>
+</html>

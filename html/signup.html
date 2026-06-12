@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Up — Inkwell</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="auth-wrapper">
+    <div class="auth-card">
+      <h1>Sign Up</h1>
+      <div id="msg" class="msg"></div>
+      <form id="auth-form">
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input id="username" name="username" type="text" placeholder="Choose a username" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" placeholder="Choose a password" required autocomplete="new-password">
+        </div>
+        <button type="submit">Sign Up</button>
+      </form>
+      <div class="alt-link">
+        Already have an account? <a href="/login">Log in</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function initSignup() {
+      // If already logged in, go to timeline
+      var existing = localStorage.getItem('token') || localStorage.getItem('session_token');
+      if (existing) {
+        window.location.href = '/';
+        return;
+      }
+
+      function showMsg(text, type) {
+        var el = document.getElementById('msg');
+        el.textContent = text;
+        el.className = 'msg show ' + type;
+      }
+
+      document.getElementById('auth-form').addEventListener('submit', function handleSignup(e) {
+        e.preventDefault();
+        var username = document.getElementById('username').value.trim();
+        var password = document.getElementById('password').value;
+
+        if (!username || !password) {
+          showMsg('Please fill in all fields.', 'error');
+          return;
+        }
+
+        fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: username, password: password })
+        })
+          .then(function handleResponse(res) {
+            return res.json().then(function parseBody(data) {
+              return { status: res.status, data: data };
+            });
+          })
+          .then(function handleResult(result) {
+            if (result.status >= 200 && result.status < 300) {
+              var tok = (result.data && (result.data.token || result.data.session_token)) || null;
+              if (tok) {
+                localStorage.setItem('token', tok);
+              }
+              showMsg('Account created! Redirecting…', 'success');
+              setTimeout(function goHome() { window.location.href = '/'; }, 800);
+            } else {
+              var errMsg = (result.data && (result.data.error || result.data.message)) || 'Signup failed.';
+              showMsg(errMsg, 'error');
+            }
+          })
+          .catch(function handleError(err) {
+            showMsg('Network error: ' + err.message, 'error');
+          });
+      });
+    })();
+  </script>
+</body>
+</html>
