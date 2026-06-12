@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>People — Inkwell</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <nav>
+    <span class="nav-brand">Inkwell</span>
+    <a href="/">Timeline</a>
+    <a href="/post">Post</a>
+    <a href="/profile">Profile</a>
+    <a href="/users">People</a>
+    <button class="nav-logout" id="btn-logout">Log out</button>
+  </nav>
+  <main>
+    <h1 class="page-title">People</h1>
+    <div class="card" id="user-list"><p class="empty">Loading…</p></div>
+  </main>
+  <script>
+    var token = localStorage.getItem('token');
+    if (!token) { window.location.href = '/login'; }
+
+    document.getElementById('btn-logout').addEventListener('mouseup', function() {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    });
+
+    function authHeaders() {
+      return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+    }
+
+    var meUsername = '';
+
+    async function loadMe() {
+      try {
+        var r = await fetch('/api/users/me', { headers: authHeaders() });
+        if (r.ok) { var d = await r.json(); meUsername = d.username; }
+      } catch(e) {}
+    }
+
+    async function toggleFollow(username, isFollowing, btn) {
+      btn.disabled = true;
+      try {
+        var method = isFollowing ? 'DELETE' : 'POST';
+        var r = await fetch('/api/follow/' + encodeURIComponent(username), { method: method, headers: authHeaders() });
+        if (r.ok) {
+          isFollowing = !isFollowing;
+          btn.textContent = isFollowing ? 'Unfollow' : 'Follow';
+          btn.className = 'follow-btn' + (isFollowing ? ' following' : '');
+          btn.dataset.following = isFollowing ? '1' : '0';
+        }
+      } catch(e) {}
+      btn.disabled = false;
+    }
+
+    async function loadUsers() {
+      await loadMe();
+      var list = document.getElementById('user-list');
+      try {
+        var resp = await fetch('/api/users', { headers: authHeaders() });
+        if (resp.status === 401) { window.location.href = '/login'; return; }
+        var users = await resp.json();
+        if (!users.length) { list.innerHTML = '<p class="empty">No users yet.</p>'; return; }
+        list.innerHTML = users.map(function(u) {
+          var isSelf = u.username === meUsername;
+          var btnHtml = isSelf ? '' :
+            '<button class="follow-btn' + (u.is_following ? ' following' : '') + '" ' +
+            'data-username="' + u.username + '" data-following="' + (u.is_following ? '1' : '0') + '">' +
+            (u.is_following ? 'Unfollow' : 'Follow') + '</button>';
+          return '<div class="user-row">' +
+            '<div class="user-info"><a href="/users/' + encodeURIComponent(u.username) + '">' + u.username + '</a>' +
+            (u.display_name ? '<div class="user-handle">' + u.display_name + '</div>' : '') +
+            '</div>' + btnHtml + '</div>';
+        }).join('');
+        list.querySelectorAll('.follow-btn').forEach(function(btn) {
+          btn.addEventListener('mouseup', function() {
+            toggleFollow(btn.dataset.username, btn.dataset.following === '1', btn);
+          });
+        });
+      } catch(e) {
+        list.innerHTML = '<p class="error-msg">Failed to load users.</p>';
+      }
+    }
+
+    loadUsers();
+  </script>
+</body>
+</html>

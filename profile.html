@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Profile — Inkwell</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <nav>
+    <span class="nav-brand">Inkwell</span>
+    <a href="/">Timeline</a>
+    <a href="/post">Post</a>
+    <a href="/profile">Profile</a>
+    <a href="/users">People</a>
+    <button class="nav-logout" id="btn-logout">Log out</button>
+  </nav>
+  <main>
+    <div id="profile-area"><p class="empty">Loading…</p></div>
+    <div id="posts-area"></div>
+  </main>
+  <script src="/md.js"></script>
+  <script>
+    var token = localStorage.getItem('token');
+    if (!token) { window.location.href = '/login'; }
+
+    document.getElementById('btn-logout').addEventListener('mouseup', function() {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    });
+
+    function authHeaders() {
+      return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+    }
+
+    function timeAgo(dateStr) {
+      var diff = Math.floor((Date.now() - new Date(dateStr)) / 1000);
+      if (diff < 60) return diff + 's ago';
+      if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+      if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+      return Math.floor(diff / 86400) + 'd ago';
+    }
+
+    var currentUser = null;
+
+    async function loadProfile() {
+      var area = document.getElementById('profile-area');
+      try {
+        var resp = await fetch('/api/users/me', { headers: authHeaders() });
+        if (resp.status === 401) { window.location.href = '/login'; return; }
+        currentUser = await resp.json();
+        var initial = (currentUser.username || '?')[0].toUpperCase();
+        area.innerHTML =
+          '<div class="profile-header">' +
+          '<div class="profile-avatar">' + initial + '</div>' +
+          '<div class="profile-meta">' +
+          '<h1>' + (currentUser.display_name || currentUser.username) + '</h1>' +
+          '<div class="user-handle">@' + currentUser.username + '</div>' +
+          (currentUser.bio ? '<div class="profile-bio">' + currentUser.bio + '</div>' : '') +
+          '</div></div>' +
+          '<div class="card">' +
+          '<h2>Edit Profile</h2>' +
+          '<form id="form-edit">' +
+          '<div class="form-group"><label for="dn">Display Name</label>' +
+          '<input type="text" id="dn" name="display_name" value="' + (currentUser.display_name || '') + '"></div>' +
+          '<div class="form-group"><label for="bio">Bio</label>' +
+          '<input type="text" id="bio" name="bio" value="' + (currentUser.bio || '') + '"></div>' +
+          '<div class="form-group"><label for="newpw">New Password</label>' +
+          '<input type="password" id="newpw" name="password" placeholder="Leave blank to keep current"></div>' +
+          '<button type="submit">Save changes</button>' +
+          '<p id="edit-msg" class="error-msg"></p>' +
+          '</form></div>';
+        document.getElementById('form-edit').addEventListener('submit', async function(ev) {
+          ev.preventDefault();
+          var payload = {};
+          var dn = document.getElementById('dn').value;
+          var bio = document.getElementById('bio').value;
+          var pw = document.getElementById('newpw').value;
+          payload.display_name = dn;
+          payload.bio = bio;
+          if (pw) payload.password = pw;
+          var msg = document.getElementById('edit-msg');
+          try {
+            var r = await fetch('/api/users/me', {
+              method: 'PATCH',
+              headers: authHeaders(),
+              body: JSON.stringify(payload)
+            });
+            if (r.ok) { msg.style.color = 'green'; msg.textContent = 'Saved!'; loadPosts(currentUser.username); }
+            else { msg.style.color = '#dc2626'; msg.textContent = 'Save failed.'; }
+          } catch(e) { msg.textContent = 'Network error.'; }
+        });
+        loadPosts(currentUser.username);
+      } catch(e) {
+        area.innerHTML = '<p class="error-msg">Failed to load profile.</p>';
+      }
+    }
+
+    async function loadPosts(username) {
+      var postsArea = document.getElementById('posts-area');
+      try {
+        var resp = await fetch('/api/posts/by/' + encodeURIComponent(username), { headers: authHeaders() });
+        var posts = await resp.json();
+        if (!posts.length) { postsArea.innerHTML = '<p class="empty">No posts yet.</p>'; return; }
+        postsArea.innerHTML = '<h2>Your Posts</h2>' + posts.map(function(p) {
+          return '<div class="post-card">' +
+            '<div class="post-meta"><span>' + timeAgo(p.created_at) + '</span></div>' +
+            '<div class="post-body">' + renderMarkdown(p.body) + '</div>' +
+            '</div>';
+        }).join('');
+      } catch(e) {}
+    }
+
+    loadProfile();
+  </script>
+</body>
+</html>

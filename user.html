@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>User — Inkwell</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <nav>
+    <span class="nav-brand">Inkwell</span>
+    <a href="/">Timeline</a>
+    <a href="/post">Post</a>
+    <a href="/profile">Profile</a>
+    <a href="/users">People</a>
+    <button class="nav-logout" id="btn-logout">Log out</button>
+  </nav>
+  <main>
+    <div id="profile-area"><p class="empty">Loading…</p></div>
+    <div id="posts-area"></div>
+  </main>
+  <script src="/md.js"></script>
+  <script>
+    var token = localStorage.getItem('token');
+    if (!token) { window.location.href = '/login'; }
+
+    document.getElementById('btn-logout').addEventListener('mouseup', function() {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    });
+
+    function authHeaders() {
+      return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+    }
+
+    var parts = window.location.pathname.split('/');
+    var username = decodeURIComponent(parts[parts.length - 1] || '');
+
+    document.title = (username || 'User') + ' — Inkwell';
+
+    function timeAgo(dateStr) {
+      var diff = Math.floor((Date.now() - new Date(dateStr)) / 1000);
+      if (diff < 60) return diff + 's ago';
+      if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+      if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+      return Math.floor(diff / 86400) + 'd ago';
+    }
+
+    var isFollowing = false;
+
+    async function toggleFollow() {
+      var btn = document.getElementById('follow-btn');
+      if (!btn) return;
+      btn.disabled = true;
+      try {
+        var method = isFollowing ? 'DELETE' : 'POST';
+        var r = await fetch('/api/follow/' + encodeURIComponent(username), { method: method, headers: authHeaders() });
+        if (r.ok) {
+          isFollowing = !isFollowing;
+          btn.textContent = isFollowing ? 'Unfollow' : 'Follow';
+          btn.className = 'follow-btn' + (isFollowing ? ' following' : '');
+        }
+      } catch(e) {}
+      btn.disabled = false;
+    }
+
+    async function loadUser() {
+      var area = document.getElementById('profile-area');
+      if (!username) { area.innerHTML = '<p class="error-msg">No username specified.</p>'; return; }
+      try {
+        var resp = await fetch('/api/users/' + encodeURIComponent(username), { headers: authHeaders() });
+        if (resp.status === 404) { area.innerHTML = '<h1>User not found</h1>'; return; }
+        if (resp.status === 401) { window.location.href = '/login'; return; }
+        var u = await resp.json();
+        isFollowing = u.is_following;
+        var initial = (u.username || '?')[0].toUpperCase();
+        var meResp = await fetch('/api/users/me', { headers: authHeaders() });
+        var me = meResp.ok ? await meResp.json() : null;
+        var isSelf = me && me.username === u.username;
+        area.innerHTML =
+          '<div class="profile-header">' +
+          '<div class="profile-avatar">' + initial + '</div>' +
+          '<div class="profile-meta">' +
+          '<h1>' + (u.display_name || u.username) + '</h1>' +
+          '<div class="user-handle">@' + u.username + '</div>' +
+          (u.bio ? '<div class="profile-bio">' + u.bio + '</div>' : '') +
+          '</div></div>' +
+          (!isSelf ? '<button id="follow-btn" class="follow-btn' + (isFollowing ? ' following' : '') + '">' +
+          (isFollowing ? 'Unfollow' : 'Follow') + '</button>' : '');
+        var btn = document.getElementById('follow-btn');
+        if (btn) btn.addEventListener('mouseup', toggleFollow);
+        loadPosts();
+      } catch(e) {
+        area.innerHTML = '<p class="error-msg">Failed to load user.</p>';
+      }
+    }
+
+    async function loadPosts() {
+      var postsArea = document.getElementById('posts-area');
+      try {
+        var resp = await fetch('/api/posts/by/' + encodeURIComponent(username), { headers: authHeaders() });
+        var posts = await resp.json();
+        if (!posts.length) { postsArea.innerHTML = '<p class="empty">No posts yet.</p>'; return; }
+        postsArea.innerHTML = '<h2>Posts</h2>' + posts.map(function(p) {
+          return '<div class="post-card">' +
+            '<div class="post-meta"><span>' + timeAgo(p.created_at) + '</span></div>' +
+            '<div class="post-body">' + renderMarkdown(p.body) + '</div>' +
+            '</div>';
+        }).join('');
+      } catch(e) {}
+    }
+
+    loadUser();
+  </script>
+</body>
+</html>

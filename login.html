@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Log In — Inkwell</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="auth-container">
+    <h1>Inkwell</h1>
+    <div class="card">
+      <h2>Log in</h2>
+      <form id="form-login">
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input name="username" id="username" type="text" autocomplete="username" required>
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input name="password" id="password" type="password" autocomplete="current-password" required>
+        </div>
+        <button type="submit">Log in</button>
+        <p id="err" class="error-msg"></p>
+      </form>
+    </div>
+    <p>Don't have an account? <a href="/signup">Sign up</a></p>
+  </div>
+  <script>
+    document.getElementById('form-login').addEventListener('submit', async function(ev) {
+      ev.preventDefault();
+      var username = document.getElementById('username').value.trim();
+      var password = document.getElementById('password').value;
+      var err = document.getElementById('err');
+      err.textContent = '';
+      try {
+        var resp = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: username, password: password })
+        });
+        if (!resp.ok) { err.textContent = 'Invalid username or password.'; return; }
+        var data = await resp.json();
+        localStorage.setItem('token', data.session_token);
+        window.location.href = '/';
+      } catch (e) {
+        err.textContent = 'Network error. Please try again.';
+      }
+    });
+  </script>
+</body>
+</html>

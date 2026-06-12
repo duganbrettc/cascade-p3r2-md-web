@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Timeline — Inkwell</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <nav>
+    <span class="nav-brand">Inkwell</span>
+    <a href="/">Timeline</a>
+    <a href="/post">Post</a>
+    <a href="/profile">Profile</a>
+    <a href="/users">People</a>
+    <button class="nav-logout" id="btn-logout">Log out</button>
+  </nav>
+  <main>
+    <h1 class="page-title">Timeline</h1>
+    <div id="feed"><p class="empty">Loading…</p></div>
+  </main>
+  <script src="/md.js"></script>
+  <script>
+    var token = localStorage.getItem('token');
+    if (!token) { window.location.href = '/login'; }
+
+    document.getElementById('btn-logout').addEventListener('mouseup', function() {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    });
+
+    function authHeaders() {
+      return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+    }
+
+    function timeAgo(dateStr) {
+      var diff = Math.floor((Date.now() - new Date(dateStr)) / 1000);
+      if (diff < 60) return diff + 's ago';
+      if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+      if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+      return Math.floor(diff / 86400) + 'd ago';
+    }
+
+    async function loadTimeline() {
+      var feed = document.getElementById('feed');
+      try {
+        var resp = await fetch('/api/timeline', { headers: authHeaders() });
+        if (resp.status === 401) { window.location.href = '/login'; return; }
+        var posts = await resp.json();
+        if (!posts.length) { feed.innerHTML = '<p class="empty">No posts yet. Follow some people or write your first post!</p>'; return; }
+        feed.innerHTML = posts.map(function(p) {
+          return '<div class="post-card">' +
+            '<div class="post-meta"><a href="/users/' + encodeURIComponent(p.username) + '">' +
+            p.username + '</a>' +
+            (p.display_name ? ' · ' + p.display_name : '') +
+            ' · <span>' + timeAgo(p.created_at) + '</span></div>' +
+            '<div class="post-body">' + renderMarkdown(p.body) + '</div>' +
+            '</div>';
+        }).join('');
+      } catch (e) {
+        feed.innerHTML = '<p class="error-msg">Failed to load timeline.</p>';
+      }
+    }
+
+    loadTimeline();
+  </script>
+</body>
+</html>

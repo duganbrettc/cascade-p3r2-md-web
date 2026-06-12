@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>New Post — Inkwell</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <nav>
+    <span class="nav-brand">Inkwell</span>
+    <a href="/">Timeline</a>
+    <a href="/post">Post</a>
+    <a href="/profile">Profile</a>
+    <a href="/users">People</a>
+    <button class="nav-logout" id="btn-logout">Log out</button>
+  </nav>
+  <main>
+    <h1 class="page-title">New Post</h1>
+    <div class="split">
+      <section>
+        <div class="preview-label">Write</div>
+        <form id="form-post">
+          <textarea id="body" name="body" placeholder="Write your post in Markdown…" aria-label="Post body"></textarea>
+          <p id="err" class="error-msg"></p>
+          <br>
+          <button type="submit">Publish</button>
+        </form>
+      </section>
+      <section>
+        <div class="preview-label">Preview</div>
+        <div id="preview" class="preview-area post-body"></div>
+      </section>
+    </div>
+  </main>
+  <script src="/md.js"></script>
+  <script>
+    var token = localStorage.getItem('token');
+    if (!token) { window.location.href = '/login'; }
+
+    document.getElementById('btn-logout').addEventListener('mouseup', function() {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    });
+
+    var textarea = document.getElementById('body');
+    var preview = document.getElementById('preview');
+
+    textarea.addEventListener('input', function() {
+      preview.innerHTML = renderMarkdown(textarea.value);
+    });
+
+    document.getElementById('form-post').addEventListener('submit', async function(ev) {
+      ev.preventDefault();
+      var body = textarea.value.trim();
+      var err = document.getElementById('err');
+      err.textContent = '';
+      if (!body) { err.textContent = 'Post body cannot be empty.'; return; }
+      try {
+        var resp = await fetch('/api/posts', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body: body })
+        });
+        if (resp.status === 401) { window.location.href = '/login'; return; }
+        if (!resp.ok) { err.textContent = 'Failed to publish post.'; return; }
+        window.location.href = '/';
+      } catch (e) {
+        err.textContent = 'Network error. Please try again.';
+      }
+    });
+  </script>
+</body>
+</html>
