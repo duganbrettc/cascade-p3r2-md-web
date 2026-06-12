@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inkwell — Log In</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <main class="container auth-box">
+    <h1>Log in to Inkwell</h1>
+    <form id="loginForm" novalidate>
+      <div>
+        <label for="username">Username</label>
+        <input name="username" type="text" id="username" required autocomplete="username">
+      </div>
+      <div>
+        <label for="password">Password</label>
+        <input name="password" type="password" id="password" required autocomplete="current-password">
+      </div>
+      <button type="submit" id="loginBtn">Log In</button>
+      <p id="errorMsg" class="msg-error" role="alert" aria-live="polite"></p>
+    </form>
+    <p style="margin-top:16px">No account? <a href="/signup">Sign up</a></p>
+  </main>
+
+  <script>
+    (function() {
+      var errorMsg = document.getElementById('errorMsg');
+      var loginBtn = document.getElementById('loginBtn');
+
+      function doLogin() {
+        var username = document.getElementById('username').value.trim();
+        var password = document.getElementById('password').value;
+        errorMsg.textContent = '';
+        if (!username || !password) { errorMsg.textContent = 'Please fill in all fields.'; return; }
+
+        fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: username, password: password })
+        })
+        .then(function(res) {
+          if (!res.ok) {
+            return res.text().then(function(t) { throw new Error(t || 'Invalid credentials'); });
+          }
+          return res.json();
+        })
+        .then(function(data) {
+          localStorage.setItem('token', data.session_token);
+          window.location.href = '/';
+        })
+        .catch(function(err) {
+          errorMsg.textContent = err.message || 'Login failed. Check your username and password.';
+        });
+      }
+
+      loginBtn.addEventListener('mousedown', function(evt) {
+        evt.preventDefault();
+        doLogin();
+      });
+
+      document.getElementById('loginForm').addEventListener('keydown', function(evt) {
+        if (evt.key === 'Enter') { evt.preventDefault(); doLogin(); }
+      });
+    }());
+  </script>
+</body>
+</html>

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inkwell — User Profile</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <nav>
+    <span class="nav-title">Inkwell</span>
+    <a href="/">Timeline</a>
+    <a href="/post">New Post</a>
+    <a href="/profile">Profile</a>
+    <a href="/users">Users</a>
+    <button class="nav-btn" id="logoutBtn">Logout</button>
+  </nav>
+
+  <main class="container">
+    <section id="profileHeader" class="profile-header" aria-label="User profile">
+      <p id="loadingMsg">Loading...</p>
+    </section>
+    <section id="postsFeed" aria-label="User posts"></section>
+  </main>
+
+  <script src="/static/js/md.js"></script>
+  <script>
+    (function() {
+      var token = localStorage.getItem('token') || localStorage.getItem('session_token');
+      if (!token) { window.location.href = '/login'; return; }
+
+      document.getElementById('logoutBtn').addEventListener('mousedown', function() {
+        localStorage.removeItem('token');
+        localStorage.removeItem('session_token');
+        window.location.href = '/login';
+      });
+
+      // Extract username from path: /users/{username}
+      var pathParts = window.location.pathname.split('/');
+      var username = decodeURIComponent(pathParts[pathParts.length - 1]);
+      if (!username) { window.location.href = '/users'; return; }
+
+      var profileHeader = document.getElementById('profileHeader');
+      var postsFeed = document.getElementById('postsFeed');
+      var loadingMsg = document.getElementById('loadingMsg');
+      var meUsername = null;
+
+      fetch('/api/users/me', { headers: { 'Authorization': 'Bearer ' + token } })
+      .then(function(r) { return r.json(); })
+      .then(function(me) { meUsername = me.username; })
+      .catch(function() {})
+      .then(function() {
+        return Promise.all([
+          fetch('/api/users/' + encodeURIComponent(username), {
+            headers: { 'Authorization': 'Bearer ' + token }
+          }),
+          fetch('/api/posts/by/' + encodeURIComponent(username), {
+            headers: { 'Authorization': 'Bearer ' + token }
+          })
+        ]);
+      })
+      .then(function(results) {
+        var userRes = results[0];
+        var postsRes = results[1];
+        if (userRes.status === 404) {
+          loadingMsg.textContent = 'User not found.';
+          return null;
+        }
+        if (userRes.status === 401) { window.location.href = '/login'; return null; }
+        return Promise.all([userRes.json(), postsRes.json()]);
+      })
+      .then(function(data) {
+        if (!data) return;
+        var user = data[0];
+        var posts = data[1];
+        loadingMsg.remove();
+
+        document.title = 'Inkwell — ' + (user.display_name || user.username);
+
+        var isSelf = (user.username === meUsername);
+        var followBtn = '';
+        if (!isSelf) {
+          followBtn = '<button type="button" id="followBtn" data-following="' + (user.is_following ? '1' : '0') + '">' +
+            (user.is_following ? 'Unfollow' : 'Follow') + '</button>';
+        }
+
+        profileHeader.innerHTML =
+          '<div class="display-name">' + escHtml(user.display_name || user.username) + '</div>' +
+          '<div class="username">@' + escHtml(user.username) + '</div>' +
+          (user.bio ? '<div class="bio">' + escHtml(user.bio) + '</div>' : '') +
+          followBtn;
+
+        var followBtnEl = document.getElementById('followBtn');
+        if (followBtnEl) {
+          followBtnEl.addEventListener('mousedown', function() {
+            followBtnEl.disabled = true;
+            var following = followBtnEl.getAttribute('data-following') === '1';
+            var method = following ? 'DELETE' : 'POST';
+            fetch('/api/follow/' + encodeURIComponent(user.username), {
+              method: method,
+              headers: { 'Authorization': 'Bearer ' + token }
+            })
+            .then(function(res) {
+              if (!res.ok) throw new Error('Failed');
+              following = !following;
+              followBtnEl.setAttribute('data-following', following ? '1' : '0');
+              followBtnEl.textContent = following ? 'Unfollow' : 'Follow';
+            })
+            .catch(function() {})
+            .then(function() { followBtnEl.disabled = false; });
+          });
+        }
+
+        if (posts.length === 0) {
+          postsFeed.innerHTML = '<p>No posts yet.</p>';
+          return;
+        }
+        posts.forEach(function(post) {
+          var card = document.createElement('article');
+          card.className = 'card post-card';
+          var date = new Date(post.created_at).toLocaleString();
+          card.innerHTML =
+            '<div class="meta"><span>' + date + '</span></div>' +
+            '<div class="body">' + renderMarkdown(post.body) + '</div>';
+          postsFeed.appendChild(card);
+        });
+      })
+      .catch(function() {
+        loadingMsg.textContent = 'Failed to load profile.';
+      });
+
+      function escHtml(s) {
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      }
+    }());
+  </script>
+</body>
+</html>

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inkwell — Users</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <nav>
+    <span class="nav-title">Inkwell</span>
+    <a href="/">Timeline</a>
+    <a href="/post">New Post</a>
+    <a href="/profile">Profile</a>
+    <a href="/users" aria-current="page">Users</a>
+    <button class="nav-btn" id="logoutBtn">Logout</button>
+  </nav>
+
+  <main class="container">
+    <h1>Users</h1>
+    <section aria-label="User list">
+      <ul class="user-list card" id="userList">
+        <li id="loadingItem">Loading...</li>
+      </ul>
+    </section>
+  </main>
+
+  <script>
+    (function() {
+      var token = localStorage.getItem('token') || localStorage.getItem('session_token');
+      if (!token) { window.location.href = '/login'; return; }
+
+      document.getElementById('logoutBtn').addEventListener('mousedown', function() {
+        localStorage.removeItem('token');
+        localStorage.removeItem('session_token');
+        window.location.href = '/login';
+      });
+
+      var userList = document.getElementById('userList');
+      var loadingItem = document.getElementById('loadingItem');
+      var meUsername = null;
+
+      // fetch own username so we can hide follow button for self
+      fetch('/api/users/me', { headers: { 'Authorization': 'Bearer ' + token } })
+      .then(function(r) { return r.json(); })
+      .then(function(me) { meUsername = me.username; })
+      .catch(function() {})
+      .then(function() {
+        return fetch('/api/users', { headers: { 'Authorization': 'Bearer ' + token } });
+      })
+      .then(function(res) {
+        if (res.status === 401) { window.location.href = '/login'; return null; }
+        return res.json();
+      })
+      .then(function(users) {
+        if (!users) return;
+        loadingItem.remove();
+        if (users.length === 0) {
+          userList.innerHTML = '<li>No users found.</li>';
+          return;
+        }
+        users.forEach(function(u) {
+          var li = document.createElement('li');
+          var name = u.display_name || u.username;
+          var isSelf = (u.username === meUsername);
+          var btnHtml = '';
+          if (!isSelf) {
+            btnHtml = '<button type="button" class="btn-secondary" data-username="' + escAttr(u.username) + '" data-following="' + (u.is_following ? '1' : '0') + '">' +
+              (u.is_following ? 'Unfollow' : 'Follow') + '</button>';
+          }
+          li.innerHTML =
+            '<div class="user-info">' +
+            '<a href="/users/' + encodeURIComponent(u.username) + '">' +
+            '<span class="display-name">' + escHtml(name) + '</span></a>' +
+            '<span class="username"> @' + escHtml(u.username) + '</span></div>' +
+            btnHtml;
+          userList.appendChild(li);
+        });
+
+        userList.addEventListener('mousedown', function(evt) {
+          var btn = evt.target.closest('button[data-username]');
+          if (!btn) return;
+          var username = btn.getAttribute('data-username');
+          var following = btn.getAttribute('data-following') === '1';
+          btn.disabled = true;
+          var method = following ? 'DELETE' : 'POST';
+          fetch('/api/follow/' + encodeURIComponent(username), {
+            method: method,
+            headers: { 'Authorization': 'Bearer ' + token }
+          })
+          .then(function(res) {
+            if (!res.ok) throw new Error('Request failed');
+            following = !following;
+            btn.setAttribute('data-following', following ? '1' : '0');
+            btn.textContent = following ? 'Unfollow' : 'Follow';
+          })
+          .catch(function() {})
+          .then(function() { btn.disabled = false; });
+        });
+      })
+      .catch(function() {
+        loadingItem.textContent = 'Failed to load users.';
+      });
+
+      function escHtml(s) {
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      }
+      function escAttr(s) {
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+      }
+    }());
+  </script>
+</body>
+</html>

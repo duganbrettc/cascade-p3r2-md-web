@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inkwell — New Post</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <nav>
+    <span class="nav-title">Inkwell</span>
+    <a href="/">Timeline</a>
+    <a href="/post" aria-current="page">New Post</a>
+    <a href="/profile">Profile</a>
+    <a href="/users">Users</a>
+    <button class="nav-btn" id="logoutBtn">Logout</button>
+  </nav>
+
+  <main class="wide-container">
+    <h1>New Post</h1>
+    <p style="margin-bottom:16px; color:var(--muted)">Markdown supported. Preview updates live.</p>
+    <section class="post-layout" aria-label="Post editor">
+      <div>
+        <label for="postBody" style="display:block;margin-bottom:6px;font-size:0.9rem;color:var(--muted);">Write (Markdown)</label>
+        <textarea id="postBody" placeholder="# My heading&#10;&#10;Write **bold**, *italic*, `code`..."></textarea>
+        <button type="button" id="publishBtn" style="margin-top:12px">Publish</button>
+        <p id="postMsg" class="msg-error" role="alert" aria-live="polite" style="margin-top:8px"></p>
+      </div>
+      <div>
+        <p style="margin-bottom:6px;font-size:0.9rem;color:var(--muted);">Preview</p>
+        <div class="preview-pane" id="previewPane" aria-label="Markdown preview"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/js/md.js"></script>
+  <script>
+    (function() {
+      var token = localStorage.getItem('token') || localStorage.getItem('session_token');
+      if (!token) { window.location.href = '/login'; return; }
+
+      document.getElementById('logoutBtn').addEventListener('mousedown', function() {
+        localStorage.removeItem('token');
+        localStorage.removeItem('session_token');
+        window.location.href = '/login';
+      });
+
+      var postBody = document.getElementById('postBody');
+      var previewPane = document.getElementById('previewPane');
+      var publishBtn = document.getElementById('publishBtn');
+      var postMsg = document.getElementById('postMsg');
+
+      postBody.addEventListener('input', function() {
+        var val = postBody.value;
+        previewPane.innerHTML = val ? renderMarkdown(val) : '<em style="color:#aaa">Preview will appear here...</em>';
+      });
+
+      publishBtn.addEventListener('mousedown', function() {
+        var body = postBody.value.trim();
+        if (!body) { postMsg.textContent = 'Post cannot be empty.'; return; }
+        postMsg.textContent = '';
+        publishBtn.disabled = true;
+
+        fetch('/api/posts', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body: body })
+        })
+        .then(function(res) {
+          if (!res.ok) throw new Error('Failed to publish');
+          return res.json();
+        })
+        .then(function() {
+          window.location.href = '/';
+        })
+        .catch(function(err) {
+          postMsg.textContent = err.message;
+          publishBtn.disabled = false;
+        });
+      });
+    }());
+  </script>
+</body>
+</html>

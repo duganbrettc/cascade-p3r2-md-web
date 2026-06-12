@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inkwell — Profile</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <nav>
+    <span class="nav-title">Inkwell</span>
+    <a href="/">Timeline</a>
+    <a href="/post">New Post</a>
+    <a href="/profile" aria-current="page">Profile</a>
+    <a href="/users">Users</a>
+    <button class="nav-btn" id="logoutBtn">Logout</button>
+  </nav>
+
+  <main class="container">
+    <h1>Edit Profile</h1>
+    <section id="profileSection" aria-label="Profile editor">
+      <p id="loadingMsg">Loading...</p>
+    </section>
+  </main>
+
+  <script>
+    (function() {
+      var token = localStorage.getItem('token') || localStorage.getItem('session_token');
+      if (!token) { window.location.href = '/login'; return; }
+
+      document.getElementById('logoutBtn').addEventListener('mousedown', function() {
+        localStorage.removeItem('token');
+        localStorage.removeItem('session_token');
+        window.location.href = '/login';
+      });
+
+      var profileSection = document.getElementById('profileSection');
+      var loadingMsg = document.getElementById('loadingMsg');
+
+      fetch('/api/users/me', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      })
+      .then(function(res) {
+        if (res.status === 401) { window.location.href = '/login'; return null; }
+        return res.json();
+      })
+      .then(function(user) {
+        if (!user) return;
+        loadingMsg.remove();
+        profileSection.innerHTML =
+          '<form id="profileForm" novalidate>' +
+          '<div><label for="displayName">Display Name</label>' +
+          '<input type="text" id="displayName" name="displayName" value="' + escAttr(user.display_name || '') + '" placeholder="Your display name"></div>' +
+          '<div><label for="bio">Bio</label>' +
+          '<textarea id="bio" name="bio" rows="4" placeholder="Tell us about yourself">' + escHtml(user.bio || '') + '</textarea></div>' +
+          '<div><label for="newPassword">New Password <span style="font-weight:normal;font-size:0.85rem">(leave blank to keep current)</span></label>' +
+          '<input type="password" id="newPassword" name="newPassword" autocomplete="new-password"></div>' +
+          '<button type="button" id="saveBtn">Save Changes</button>' +
+          '<p id="profileMsg" role="alert" aria-live="polite"></p>' +
+          '</form>';
+
+        function saveProfile() {
+          var payload = {
+            display_name: document.getElementById('displayName').value.trim() || null,
+            bio: document.getElementById('bio').value.trim() || null
+          };
+          var pw = document.getElementById('newPassword').value;
+          if (pw) payload.password = pw;
+
+          fetch('/api/users/me', {
+            method: 'PATCH',
+            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          })
+          .then(function(res) {
+            if (!res.ok) throw new Error('Save failed');
+            return res.json();
+          })
+          .then(function() {
+            var msg = document.getElementById('profileMsg');
+            msg.className = 'msg-success';
+            msg.textContent = 'Profile saved!';
+          })
+          .catch(function(err) {
+            var msg = document.getElementById('profileMsg');
+            msg.className = 'msg-error';
+            msg.textContent = err.message;
+          });
+        }
+
+        document.getElementById('saveBtn').addEventListener('mousedown', function(evt) {
+          evt.preventDefault();
+          saveProfile();
+        });
+      })
+      .catch(function() {
+        loadingMsg.textContent = 'Failed to load profile.';
+      });
+
+      function escHtml(s) {
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      }
+      function escAttr(s) {
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+      }
+    }());
+  </script>
+</body>
+</html>
